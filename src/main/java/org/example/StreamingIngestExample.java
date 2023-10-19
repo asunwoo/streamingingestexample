@@ -13,6 +13,9 @@ import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
+import org.apache.beam.sdk.options.StreamingOptions;
+import org.apache.beam.sdk.options.Description;
+import org.apache.beam.sdk.options.Validation.Required;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.windowing.FixedWindows;
 import org.apache.beam.sdk.transforms.windowing.Window;
@@ -28,6 +31,26 @@ public class StreamingIngestExample {
     * by the command-line parser, and specify default values for them.
      */
     private static final Logger LOG = LoggerFactory.getLogger(StreamingIngestExample.class);
+
+    public interface StreamingIngestExampleOptions extends StreamingOptions {
+        @Description("The Cloud Pub/Sub topic to read from.")
+        @Required
+        String getInputTopic();
+
+        void setInputTopic(String value);
+
+        @Description("GCS output bucket")
+        @Required
+        String getDestinationBucket();
+
+        void setDestinationBucket(String value);
+
+        @Description("Full bq table name")
+        @Required
+        String getBQTable();
+
+        void setBQTable(String value);
+    }
 
     static class AggregateGroupBy extends DoFn<KV<String, Iterable<String>>, TableRow> {
         @ProcessElement
@@ -83,20 +106,23 @@ public class StreamingIngestExample {
         // The maximum number of shards when writing output.
         int numShards = 1;
         JSONParser parser = new JSONParser();
-        PipelineOptions options =
-                PipelineOptionsFactory.fromArgs(args).create();
+        // PipelineOptions options =
+        //         PipelineOptionsFactory.fromArgs(args).create();
+
+        StreamingIngestExampleOptions options =
+            PipelineOptionsFactory.fromArgs(args).withValidation().as(StreamingIngestExampleOptions.class);
 
         Pipeline pipeline = Pipeline.create(options);
 
         PCollection<String> messages = pipeline
                 // 1) Read string messages from a Pub/Sub topic.
-                .apply("Read PubSub Messages", PubsubIO.readStrings().fromTopic("projects/red-road-356318/topics/streaming-ingest"))
+                .apply("Read PubSub Messages", PubsubIO.readStrings().fromTopic(options.getInputTopic()))
                 // 2) Group the messages into fixed-sized minute intervals.
                 .apply(Window.into(FixedWindows.of(Duration.standardMinutes(1))));
 
         messages.apply(TextIO
                         .write()
-                        .to("gs://streaming-results/events/")
+                        .to(options.getDestinationBucket())
                         .withWindowedWrites()
                         .withSuffix(".json"));
 
@@ -118,7 +144,7 @@ public class StreamingIngestExample {
                 new AggregateGroupBy()));
 
         rowCollection.apply("Write to BigQuery", BigQueryIO.writeTableRows()
-                .to(String.format("%s:%s.%s", "red-road-356318", "streaming_results", "streaming_results"))
+                .to(options.getBQTable())
                 //.withSchema(schema)
                 .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_NEVER)
                 .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND));
