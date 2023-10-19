@@ -106,8 +106,7 @@ public class StreamingIngestExample {
         // The maximum number of shards when writing output.
         int numShards = 1;
         JSONParser parser = new JSONParser();
-        // PipelineOptions options =
-        //         PipelineOptionsFactory.fromArgs(args).create();
+         PipelineOptionsFactory.fromArgs(args).create();
 
         StreamingIngestExampleOptions options =
             PipelineOptionsFactory.fromArgs(args).withValidation().as(StreamingIngestExampleOptions.class);
@@ -116,7 +115,9 @@ public class StreamingIngestExample {
 
         PCollection<String> messages = pipeline
                 // 1) Read string messages from a Pub/Sub topic.
+
                 .apply("Read PubSub Messages", PubsubIO.readStrings().fromTopic(options.getInputTopic()))
+
                 // 2) Group the messages into fixed-sized minute intervals.
                 .apply(Window.into(FixedWindows.of(Duration.standardMinutes(1))));
 
@@ -145,7 +146,6 @@ public class StreamingIngestExample {
 
         rowCollection.apply("Write to BigQuery", BigQueryIO.writeTableRows()
                 .to(options.getBQTable())
-                //.withSchema(schema)
                 .withCreateDisposition(BigQueryIO.Write.CreateDisposition.CREATE_NEVER)
                 .withWriteDisposition(BigQueryIO.Write.WriteDisposition.WRITE_APPEND));
 
